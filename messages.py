@@ -8,8 +8,7 @@ import urllib
 from datetime import datetime
 import pytz
 
-blink = "8877246"
-blink = "8888888"
+blink_number ='+17788877246'
 building = "6841386"
 open="www9wwww9ww"
 allow_all = True
@@ -18,14 +17,13 @@ client = TwilioRestClient(account_sid, auth_token)
 
 app = Flask(__name__)
 
-
 @app.route("/sms", methods=['POST'])
 def forward_sms():
     global allow_all
 
     from_number = request.values.get('From', None)
     sms_body = request.values.get('Body', None)
-    if cell_number in from_number or blink in from_number:
+    if cell_number in from_number or blink_number in from_number:
         if "unlock" in sms_body.lower():
             allow_all = True
             message = client.sms.messages.create(to=from_number, from_=twilio_number, body="unlocked")
@@ -57,7 +55,8 @@ def voice():
             resp.say("Hello. What is the password?")
             # resp.gather(numDigits=3, action="/password")
             resp.record(maxLength="5", action="/passphrase")
-        message = client.sms.messages.create(to=cell_number, from_=twilio_number, body="Buzzed")
+        message = client.sms.messages.create(to=cell_number, from_=twilio_number, body="Someone Buzzed")
+        message = client.sms.messages.create(to=blink_number, from_=twilio_number, body="Someone Buzzed")
     else:
         resp.play(url_for('static', filename="message.wav"))
         resp.record(maxLength="60", action="/recording")
@@ -145,11 +144,11 @@ def get_voice(url):
     with sr.WavFile("tmp.wav") as source:
         audio = r.record(source)
     try:
-        voice = r.recognize(audio)
+        voice = r.recognize_google(audio)
     except LookupError:
         voice = ""
     return voice
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=6000, debug=True)

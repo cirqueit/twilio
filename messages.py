@@ -71,7 +71,7 @@ def pay():
     resp.play(digits=wait+str(meter)+'#')
     resp.play(digits=wait+str(duration)+'#')
     resp.play(digits=wait+str(1))
-    resp.record(maxLength="5", action="/confirm")
+    resp.record(maxLength="8", action="/confirm")
 
     return str(resp)
 
@@ -85,12 +85,8 @@ def confirm():
     from_number, _, meter, duration = c.fetchone()
     conn.close()
     recording_url = request.values.get("RecordingUrl", None)
-    voice_body = get_voice(recording_url)
     body = 'meter: {0}\nduration: {1}\n'.format(meter, duration)
-    if 'successful' in voice_body:
-        body += 'success'
-    else:
-        body += 'fail'
+    body += get_voice(recording_url)
     message = client.sms.messages.create(to=from_number, from_=twilio_number, body=body)
 
     return str(recording_url)

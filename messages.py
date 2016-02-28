@@ -85,13 +85,13 @@ def confirm():
     from_number, _, meter, duration = c.fetchone()
     conn.close()
     recording_url = request.values.get("RecordingUrl", None)
+    voice_body = get_voice(recording_url)
     body = 'meter: {0}\nduration: {1}\n'.format(meter, duration)
-    voice_body += get_voice(recording_url)
     if 'successful' in voice_body:
         body += 'success'
     else:
         body += 'fail'
-    message = client.sms.messages.create(to=from_number, from_=twilio_number, body=voice_body)
+    message = client.sms.messages.create(to=from_number, from_=twilio_number, body=body)
 
     return str(recording_url)
     
@@ -190,7 +190,7 @@ def passphrase():
 
 def get_parking(msg):
     meter, time, utc = '', '', ''
-    m = re.search(r'(\d*)park\s*(\d{5})(.*)', msg)
+    m = re.search(r'(\d*)\s*park\s*(\d{5})(.*)', msg)
     if m:
         duration = m.group(1)
         if duration:

@@ -5,15 +5,25 @@ import twilio.twiml
 from twilio_account import account_sid, auth_token, cell_number, twilio_number
 import speech_recognition as sr
 import urllib
-from datetime import datetime
+from datetime import datetime, timedelta
+import parsedatetime as pdt
 import pytz
+import re
+from redis import Redis
+from rq_scheduler import Scheduler
+from paybyphone import paybyphone
+import sqlite3
 
 blink_number ='+17788877246'
 building = "6841386"
 open="www9wwww9ww"
 allow_all = True
 
+scheduler = Scheduler(connection=Redis())
+
 client = TwilioRestClient(account_sid, auth_token)
+
+
 
 app = Flask(__name__)
 
@@ -23,20 +33,68 @@ def forward_sms():
 
     from_number = request.values.get('From', None)
     sms_body = request.values.get('Body', None)
-    if cell_number in from_number or blink_number in from_number:
+    if "park" in sms_body.lower():
+        meter, duration, time, utc = get_parking(sms_body.lower())
+        print from_number, meter, duration, time, utc
+        scheduler.enqueue_at(utc, paybyphone, from_number, meter, duration)
+        message = client.sms.messages.create(to=from_number, from_=twilio_number, body='meter: {0}\ntime: {1}\nduration: {2}'.format(meter, time, duration))
+    elif cell_number in from_number:
         if "unlock" in sms_body.lower():
             allow_all = True
             message = client.sms.messages.create(to=from_number, from_=twilio_number, body="unlocked")
-        else:
+            print ('allow_all', allow_all)
+        elif "lock" in sms_body.lower():
             allow_all = False
             message = client.sms.messages.create(to=from_number, from_=twilio_number, body="locked")
-        print ('allow_all', allow_all)
+            print ('allow_all', allow_all)
+        else:
+            sms_body = '\n'.join(['SMS', from_number, sms_body])
+            message = client.sms.messages.create(to=cell_number, from_=twilio_number, body=sms_body)
     else:
         sms_body = '\n'.join(['SMS', from_number, sms_body])
         message = client.sms.messages.create(to=cell_number, from_=twilio_number, body=sms_body)
 
     return ('', 204)
 
+
+@app.route("/pay", methods=['GET', 'POST'])
+def pay():
+    sid = request.values.get('CallSid', None)
+    conn = sqlite3.connect('paybyphone.db3')
+    c = conn.cursor()
+    c.execute('select * from paybyphone where sid=?', (sid,))
+    _, _, meter, duration = c.fetchone()
+    conn.close()
+
+    resp = twilio.twiml.Response()
+    wait = 'wwwwwwww'
+    resp.play(digits=wait+str(meter)+'#')
+    resp.play(digits=wait+str(duration)+'#')
+    resp.play(digits=wait+str(1))
+    resp.record(maxLength="5", action="/confirm")
+
+    return str(resp)
+
+
+@app.route("/confirm", methods=['GET', 'POST'])
+def confirm():
+    sid = request.values.get('CallSid', None)
+    conn = sqlite3.connect('paybyphone.db3')
+    c = conn.cursor()
+    c.execute('select * from paybyphone where sid=?', (sid,))
+    from_number, _, meter, duration = c.fetchone()
+    conn.close()
+    recording_url = request.values.get("RecordingUrl", None)
+    body = 'meter: {0}\nduration: {1}\n'.format(meter, duration)
+    voice_body += get_voice(recording_url)
+    if 'successful' in voice_body:
+        body += 'success'
+    else:
+        body += 'fail'
+    message = client.sms.messages.create(to=from_number, from_=twilio_number, body=voice_body)
+
+    return str(recording_url)
+    
 
 @app.route("/voice", methods=['GET', 'POST'])
 def voice():
@@ -129,6 +187,27 @@ def passphrase():
     resp.hangup()
 
     return str(resp)
+
+def get_parking(msg):
+    meter, time, utc = '', '', ''
+    m = re.search(r'(\d*)park\s*(\d{5})(.*)', msg)
+    if m:
+        duration = m.group(1)
+        if duration:
+            duration = int(duration)
+        else:
+            duration = 120
+        meter = m.group(2)
+        time_str = m.group(3)
+        if time_str:
+            vancouver = pytz.timezone('America/Vancouver')
+            now = datetime.now(vancouver)
+            time = vancouver.localize(pdt.Calendar().parseDT(time_str, now)[0])
+            if now > time:
+                time += timedelta(days=1)
+            utc = time.astimezone(pytz.utc)
+
+    return meter, duration, time, utc.replace(tzinfo=None)
 
 
 def get_code():

@@ -103,7 +103,7 @@ def voice():
             g.say("Press 1 to record a new message.")
     elif building in from_number:
         if allow_all:
-            resp.say("Hello. Who is at my door?")
+            resp.say("Yo. I'll buzz you up. One second please.")
             resp.play(digits=open)
         else:
             resp.say("Hello. What is the password?")
@@ -186,13 +186,12 @@ def passphrase():
 
 def get_parking(msg):
     meter, time, utc = '', '', ''
+    duration = 120
     m = re.search(r'(\d*)\s*park\s*(\d{5})(.*)', msg)
     if m:
-        duration = m.group(1)
-        if duration:
-            duration = int(duration)
-        else:
-            duration = 120
+        duration_str = m.group(1)
+        if duration_str:
+            duration = int(duration_str)
         meter = m.group(2)
         time_str = m.group(3)
         if time_str:
@@ -214,16 +213,17 @@ def get_code():
 
 
 def get_voice(url):
+    voice = "error transcribing"
     urllib.urlretrieve(url, "tmp.wav")
     r = sr.Recognizer()
     with sr.WavFile("tmp.wav") as source:
         audio = r.record(source)
     try:
         voice = r.recognize_google(audio)
-    except LookupError:
-        voice = ""
+    except:
+        pass
     return voice
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=6000, debug=True)
+    app.run(host='0.0.0.0', port=6666, debug=True)
